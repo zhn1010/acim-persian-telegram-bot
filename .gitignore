@@ -1,0 +1,27 @@
+node_modules/
+dist/
+.wrangler/
+.dev.vars*
+.env*
+worker-configuration.d.ts
+*.log
+telegram_audio_manifest.json
+telegram_audio_ids.sql
+.DS_Store
+
+# Large media is stored outside the public source repository.
+persian_audio/
+acim_workbook_english_audio/
+*.mp3
+*.m4a
+*.wav
+
+# Local research artifacts and superseded datasets.
+main.ipynb
+DB_multilingual.json
+DB_multilingual.v2.json
+DB_multilingual.v3.json
+DB_multilingual.*-report.json
+
+# Keep the lightweight final profile images, not large working PNG variants.
+assets/*.png

@@ -1,0 +1,30 @@
+{
+  "name": "acim-persian-telegram-bot",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "wrangler deploy --dry-run --outdir dist",
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "cf-typegen": "wrangler types",
+    "seed": "node scripts/generate-seed.mjs",
+    "seed:check": "node scripts/generate-seed.mjs --check",
+    "db:local": "wrangler d1 migrations apply acim-alerts-db --local",
+    "db:remote": "wrangler d1 migrations apply acim-alerts-db --remote",
+    "webhook:set": "node scripts/register-webhook.mjs",
+    "audio:upload": "node scripts/upload-telegram-audio.mjs"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-plugin": "1.6.0",
+    "typescript": "5.9.3",
+    "vitest": "4.1.12",
+    "wrangler": "4.158.0"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
