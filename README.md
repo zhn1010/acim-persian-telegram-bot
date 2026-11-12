@@ -1,25 +1,25 @@
-# ربات فارسی درس‌های ACIM روی Cloudflare
+# Persian ACIM Daily Companion Bot on Cloudflare
 
-این پروژه نسخهٔ اجرایی تجربهٔ کاربری تعریف‌شده در `PERSIAN_BOT_UX_SPEC.md` است. هر کاربر شمارهٔ درس، منطقهٔ زمانی و برنامهٔ یادآوری روزانهٔ مستقل دارد. متن در ساعت ۰۶:۰۰ و یادآوری‌ها در بازهٔ ۰۸:۰۰ تا ۲۰:۰۰ به وقت محلی همان کاربر ارسال می‌شوند. سؤال ساعت ۲۰:۱۵ فقط پس از درس ۳۶۵ نمایش داده می‌شود.
+This repository contains the production implementation of the user experience documented in `PERSIAN_BOT_UX_SPEC.md`. Each user has an independent lesson number, IANA time zone, and daily reminder schedule. The bot sends the lesson at 06:00 and reminders between 08:00 and 20:00 in the user's local time. The 20:15 end-of-course prompt is shown only after lesson 365.
 
-## فایل‌های خارج از مخزن
+## Files intentionally excluded
 
-فایل‌های صوتی فارسی و انگلیسی، وابستگی‌های نصب‌شده، خروجی build، وضعیت محلی Wrangler، فایل‌های محیطی و داده‌های موقت تعمیر محتوا عمداً در مخزن عمومی قرار نمی‌گیرند. فایل نهایی `DB_multilingual.v4.json` و migrationهای لازم برای اجرای بات داخل مخزن نگه‌داری می‌شوند.
+Persian and English audio files, installed dependencies, build output, local Wrangler state, environment files, the research notebook, and temporary content-repair datasets are intentionally excluded from the public repository. The final `DB_multilingual.v4.json` dataset and the migrations required to run the bot are included.
 
-## معماری
+## Architecture
 
-- یک Cloudflare Worker برای وب‌هوک تلگرام و Cron دقیقه‌ای
-- D1 برای ۳۶۵ درس، وضعیت کاربران، تصمیم روزانه و صف یادآوری‌ها
-- منطقهٔ زمانی IANA مستقل برای هر کاربر، با تشخیص خودکار داخل تلگرام و انتخاب دستیِ کوتاه و گروه‌بندی‌شده
-- فایل صوتی بومی تلگرام: اصل MP3ها در کانال خصوصی آرشیو می‌شود؛ هر فایل یک‌بار با خود بات ثبت، `file_id` آن در D1 ذخیره و پیام موقت ثبت حذف می‌شود
-- وب‌هوک با `X-Telegram-Bot-Api-Secret-Token` و ثبت idempotent شناسهٔ update
-- صف یادآوری با claim/lease، حذف یادآوری‌های بیش از ۱۵ دقیقه دیرکرد و جلوگیری از بازپخش انباشته
+- A Cloudflare Worker handles the Telegram webhook and a once-per-minute Cron Trigger.
+- Cloudflare D1 stores 365 lessons, user state, daily decisions, and reminder jobs.
+- Every user has an independent IANA time zone, selected through automatic detection inside Telegram or a short grouped manual list.
+- Audio is delivered as native Telegram audio. Original MP3 files are archived in a private channel, registered with the bot once, and reused through the stored Telegram `file_id`. The temporary registration message is then deleted.
+- The webhook is protected with `X-Telegram-Bot-Api-Secret-Token`, and Telegram update IDs are recorded idempotently.
+- Reminder jobs use claim/lease processing. Reminders delayed by more than 15 minutes are marked missed instead of being replayed in a burst.
 
-دادهٔ فارسی migration دوم از `DB_multilingual.v4.json` تولید می‌شود. این فایل شامل ۳۶۵ عنوان، متن کامل، متن یادآوری، پیوند منبع، صوت‌های موجود و پیشنهاد زمان‌بندی دوره است.
+The second migration is generated from `DB_multilingual.v4.json`. The dataset contains all 365 Persian titles, full lesson texts, reminder texts, source links, available audio references, and course-recommended schedules.
 
-## راه‌اندازی محلی
+## Local setup
 
-پیش‌نیاز اجرای Worker: Node.js 22 یا جدیدتر. اسکریپت ثبت/همگام‌سازی صوت علاوه بر آن به `ffprobe` از بستهٔ FFmpeg نیاز دارد تا مدت واقعی MP3 را برای پلیر تلگرام ثبت کند.
+The Worker requires Node.js 22 or newer. Audio registration and synchronization also require `ffprobe` from FFmpeg so the real MP3 duration can be stored for Telegram's audio player.
 
 ```bash
 npm install
@@ -28,22 +28,23 @@ npm run seed:check
 npm run db:local
 ```
 
-سپس `.dev.vars` بسازید (این فایل در Git نادیده گرفته می‌شود):
+Create `.dev.vars` next. This file is ignored by Git:
 
 ```dotenv
 TELEGRAM_BOT_TOKEN=...
-TELEGRAM_WEBHOOK_SECRET=یک_رشته_تصادفی_امن
-AUDIO_UPLOAD_SECRET=یک_رشته_تصادفی_امن_دیگر
+TELEGRAM_WEBHOOK_SECRET=a_secure_random_string
+AUDIO_UPLOAD_SECRET=another_secure_random_string
+TELEGRAM_MEDIA_CHAT_ID=...
 ```
 
-اجرا و آزمایش Cron محلی:
+Run the Worker and trigger the local Cron handler:
 
 ```bash
 npm run dev
 curl "http://localhost:8787/cdn-cgi/local/scheduled?format=json"
 ```
 
-## آزمون و کنترل کیفیت
+## Tests and quality checks
 
 ```bash
 npm run typecheck
@@ -51,32 +52,33 @@ npm test
 npm run build
 ```
 
-تست‌ها به‌طور صریح بازتوزیع تعداد ثابت در زمان باقی‌مانده، شروع برنامهٔ فاصله‌ای پس از یک فاصلهٔ کامل، برنامهٔ فشردهٔ هر ۸ دقیقه، تبدیل چند منطقهٔ زمانی، تغییر ساعت تابستانی، حذف تیتر تکراری و سقف امن طول پیام را پوشش می‌دهند.
+The test suite covers fixed-count redistribution over the remaining day, interval schedules that begin after one complete interval, intensive eight-minute schedules, multiple time zones, daylight-saving changes, duplicate-title removal, and safe Telegram message-length limits.
 
-## استقرار
+## Deployment
 
-این دستورات روی حساب Cloudflare تغییر ایجاد می‌کنند و باید هنگام استقرار اجرا شوند:
+The following commands change resources in your Cloudflare account:
 
-1. ورود و ساخت D1:
+1. Authenticate and create a D1 database:
 
    ```bash
    npx wrangler login
    npx wrangler d1 create acim-alerts-db
    ```
 
-2. مقدار `database_id` برگشتی را به‌جای UUID صفر در `wrangler.jsonc` قرار دهید.
+2. Replace the existing `database_id` in `wrangler.jsonc` with the ID returned for your D1 database. Update `APP_BASE_URL` to your own Worker URL as well.
 
-3. secretها و migrationها:
+3. Configure secrets, apply migrations, and deploy:
 
    ```bash
    npx wrangler secret put TELEGRAM_BOT_TOKEN
    npx wrangler secret put TELEGRAM_WEBHOOK_SECRET
    npx wrangler secret put AUDIO_UPLOAD_SECRET
+   npx wrangler secret put TELEGRAM_MEDIA_CHAT_ID
    npm run db:remote
    npm run deploy
    ```
 
-4. وب‌هوک تلگرام را ثبت کنید:
+4. Register the Telegram webhook:
 
    ```bash
    TELEGRAM_BOT_TOKEN=... \
@@ -85,19 +87,19 @@ npm run build
    npm run webhook:set
    ```
 
-## قواعد مهم محصول
+## Important product rules
 
-- برنامهٔ تعداد ثابت پس از ثبت مطالعه در بازهٔ باقی‌مانده تا ۲۰:۰۰ بازتوزیع می‌شود؛ ابتدا دست‌کم ۳۰ دقیقه فاصلهٔ امن کنار گذاشته می‌شود و خودِ ابتدای بازه یادآوری محسوب نمی‌شود.
-- برنامهٔ فاصله‌ای پس از یک فاصلهٔ کامل از زمان فعال‌سازی و با گرد کردن به پنج دقیقه شروع می‌شود.
-- برنامه‌های حداکثر ۱۵ دقیقه یا بیش از ۵۰ یادآوری به تأیید دوم نیاز دارند.
-- اگر درس پیشنهاد زمان‌بندی دارد، فقط همان پیشنهادها و گزینهٔ «بدون یادآوری امروز» نشان داده می‌شود؛ در غیر این صورت فقط ۲، ۳، ۴ و ۵ بار نمایش داده می‌شود.
-- درس‌های ۱ تا ۳۶۴ بدون سؤال شب به درس بعدی می‌روند. پس از درس ۳۶۵، پایان دوره پیش‌فرض است و کاربر می‌تواند تکرار آخرین درس یا شروع دوباره را انتخاب کند.
-- گزینهٔ پیشنهادی صوت «ارسال با زدن دکمه» است؛ کاربر می‌تواند ارسال خودکار همراه پیام صبح را فعال کند.
-- دکمهٔ صوت فقط برای درس‌هایی نمایش داده می‌شود که `telegram_audio_file_id` آماده دارند؛ ارسال برای کاربران از همان فایل تلگرام استفاده می‌کند و آپلود تکرار نمی‌شود.
-- شناسهٔ چت ثبت رسانه در Cloudflare Secret نگه‌داری می‌شود و نباید داخل `wrangler.jsonc` یا سورس قرار گیرد.
-- تغییر منطقهٔ زمانیِ کاربر فعال از درس بعدی اعمال می‌شود تا برنامهٔ همان روز تکرار یا ناقص نشود.
-- انتخاب دستی فقط از فهرست کوتاهِ گروه‌های زمانی است؛ ورودی آزاد کشور یا شهر وجود ندارد.
-- همهٔ انتخاب‌ها inline هستند و کیبورد همان پیام پس از هر انتخاب حذف می‌شود؛ فقط تشخیص خودکار منطقهٔ زمانی موقتاً از Reply Keyboard استفاده می‌کند.
-- متن درس و فایل صوتی دائمی‌اند. آخرین پیام کنترلی یا یادآوری با پیام موقت بعدی جایگزین می‌شود و پیام‌های ورودی کاربر پس از پردازش حذف می‌شوند.
-- انتهای متن شامل «مشاهدهٔ این درس در وبسایت | همراه دوره‌ای در معجزات» است؛ عبارت اول به همان درس در `acim-farsi.org` و عبارت دوم به `https://t.me/ACIMDailyCompanionBot` پیوند دارد و دکمهٔ جداگانه‌ای ندارد.
-- پیش از عرضهٔ تجاری، اجازهٔ استفاده از ترجمه و صوت باید جداگانه با صاحب منبع روشن شود.
+- A fixed-count schedule is redistributed over the time remaining until 20:00. The bot first reserves a safety gap of at least 30 minutes, and the beginning of the available window is not itself counted as a reminder.
+- An interval schedule starts after one complete interval from activation time and is rounded to the next five-minute boundary.
+- Schedules with intervals of 15 minutes or less, or more than 50 reminders, require an additional confirmation.
+- When a lesson provides course-recommended schedules, only those recommendations and the no-reminders option are shown. Lessons without a recommendation offer two, three, four, or five reminders.
+- Lessons 1 through 364 advance to the next lesson without a nightly question. After lesson 365, completing the course is the default, while the user may repeat the final lesson or restart from lesson 1.
+- The recommended audio preference is on-demand delivery through a button. Users may instead enable automatic audio delivery with the morning lesson.
+- The audio button appears only when `telegram_audio_file_id` is available. Telegram reuses the same stored file instead of uploading it separately for every user.
+- The media-registration chat ID is stored as a Cloudflare secret and must never be committed to `wrangler.jsonc` or source code.
+- A time-zone change for an active user takes effect with the next lesson so the current day's schedule is not duplicated or truncated.
+- Manual time-zone selection uses a short grouped list; free-form country or city input is not supported.
+- All decisions use inline keyboards, which are removed after selection. Automatic time-zone detection temporarily uses a reply keyboard.
+- Lesson text and lesson audio are persistent. The latest control message or reminder replaces the previous temporary message, and incoming user messages are deleted after processing.
+- The lesson footer links to the matching lesson on `acim-farsi.org` and to `https://t.me/ACIMDailyCompanionBot`; it does not use a separate URL button.
+- Permission to use the translation and audio commercially must be confirmed separately with the source owner before any commercial release.
